@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
+import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
 import {
   Modal,
@@ -15,7 +16,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ALL_FACILITIES, Facility, Park } from "./constants";
 import {
   AppLogo,
-  AppStatusBar,
   BottomNav,
   ChildCard,
   FacilityRow,
@@ -44,6 +44,15 @@ async function openExternalMap(
   const googleUrl = `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`;
   const url = Platform.OS === "ios" ? appleUrl : googleUrl;
   await Linking.openURL(url);
+}
+
+async function copyMapLink(
+  park: Park,
+  flashToast: (message: string) => void,
+) {
+  const coordinates = `${park.latitude}, ${park.longitude}`;
+  await Clipboard.setStringAsync(coordinates);
+  flashToast(`Koordinater for ${park.name} kopieret`);
 }
 
 export default function PlaymapsApp() {
@@ -97,6 +106,10 @@ export default function PlaymapsApp() {
   const checkedKidsHere = (playmaps.checkedIn[selectedPark.id] ?? [])
     .map((kidId) => playmaps.kids.find((kid) => kid.id === kidId))
     .filter(Boolean);
+  const checkedInKidIds = useMemo(
+    () => new Set(Object.values(playmaps.checkedIn).flat()),
+    [playmaps.checkedIn],
+  );
 
   const openPark = (parkId: string) => {
     playmaps.setSelectedParkId(parkId);
@@ -169,16 +182,22 @@ export default function PlaymapsApp() {
         subtitle="Hvem checker ind?"
       >
         <View style={styles.childGrid}>
-          {playmaps.kids.map((kid) => (
-            <ChildCard
-              key={kid.id}
-              kid={kid}
-              onPress={() => {
-                playmaps.checkInKid(selectedPark.id, kid.id);
-                setShowCheckIn(false);
-              }}
-            />
-          ))}
+          {playmaps.kids.map((kid) => {
+            const alreadyCheckedIn = checkedInKidIds.has(kid.id);
+
+            return (
+              <ChildCard
+                key={kid.id}
+                kid={kid}
+                disabled={alreadyCheckedIn}
+                note={alreadyCheckedIn ? "Allerede checket ind" : undefined}
+                onPress={() => {
+                  playmaps.checkInKid(selectedPark.id, kid.id);
+                  setShowCheckIn(false);
+                }}
+              />
+            );
+          })}
           <Pressable
             style={styles.addChildButton}
             onPress={() => {
@@ -276,7 +295,6 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   return (
     <Screen>
       <SafeAreaView style={styles.safeArea}>
-        <AppStatusBar />
         <View style={styles.loginContent}>
           <AppLogo size={128} />
           <Text style={styles.brandTitle}>playmaps</Text>
@@ -373,7 +391,7 @@ function HomeScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppStatusBar />
+      <CheckInBanner />
       <View style={styles.topBar}>
         <IconButton icon="menu" onPress={() => onNavigate("menu")} />
         <View style={styles.brandLockup}>
@@ -440,14 +458,20 @@ function HomeScreen({
             parks={parks}
             focusedId={focused?.id ?? focusedParkId}
             currentLocation={currentLocation}
-            onSelect={setFocusedParkId}
+            onSelect={(parkId) => {
+              if (parks.some((park) => park.id === parkId)) {
+                setFocusedParkId(parkId);
+              }
+            }}
           />
-          <IconButton
-            icon={favorites.includes(focused.id) ? "star" : "star-outline"}
-            active={favorites.includes(focused.id)}
-            onPress={() => toggleFavorite(focused.id)}
-            style={styles.favoriteFloat}
-          />
+          {focused ? (
+            <IconButton
+              icon={favorites.includes(focused.id) ? "star" : "star-outline"}
+              active={favorites.includes(focused.id)}
+              onPress={() => toggleFavorite(focused.id)}
+              style={styles.favoriteFloat}
+            />
+          ) : null}
           <IconButton
             icon={locationPending ? "crosshairs-gps" : "crosshairs"}
             onPress={requestCurrentLocation}
@@ -473,6 +497,7 @@ function HomeScreen({
           <>
             <ParkInfoCard
               park={focused}
+              onCopyLink={() => copyMapLink(focused, flashToast)}
               onNavigate={() =>
                 openExternalMap(
                   focused.name,
@@ -487,6 +512,7 @@ function HomeScreen({
                 key={park.id}
                 park={park}
                 compact
+                onCopyLink={() => copyMapLink(park, flashToast)}
                 onNavigate={() =>
                   openExternalMap(park.name, park.latitude, park.longitude)
                 }
@@ -519,14 +545,20 @@ function DetailsScreen({
   onCheckIn: () => void;
   onCheckOut: () => void;
 }) {
-  const { parks, selectedParkId, checkedIn, favorites, toggleFavorite } =
-    usePlaymaps();
+  const {
+    parks,
+    selectedParkId,
+    checkedIn,
+    favorites,
+    toggleFavorite,
+    flashToast,
+  } = usePlaymaps();
   const park = parks.find((item) => item.id === selectedParkId) ?? parks[0];
   const hasCheckedIn = Boolean(checkedIn[park.id]?.length);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppStatusBar />
+      <CheckInBanner />
       <View style={styles.detailTopBar}>
         <IconButton icon="chevron-left" onPress={onBack} />
         <IconButton
@@ -543,6 +575,7 @@ function DetailsScreen({
       >
         <ParkInfoCard
           park={park}
+          onCopyLink={() => copyMapLink(park, flashToast)}
           onNavigate={() =>
             openExternalMap(park.name, park.latitude, park.longitude)
           }
@@ -592,6 +625,92 @@ function DetailsScreen({
   );
 }
 
+function CheckInBanner() {
+  const { checkedIn, parks, kids, checkOutKid } = usePlaymaps();
+  const activeCheckIn = useMemo(() => {
+    const entry = Object.entries(checkedIn).find(([, kidIds]) => kidIds.length);
+    if (!entry) {
+      return null;
+    }
+
+    const [parkId, kidIds] = entry;
+    const park = parks.find((item) => item.id === parkId);
+    if (!park) {
+      return null;
+    }
+
+    const checkedKids = kidIds
+      .map((kidId) => kids.find((kid) => kid.id === kidId))
+      .filter(Boolean);
+
+    return { park, kidIds, checkedKids };
+  }, [checkedIn, kids, parks]);
+  const [showPrompt, setShowPrompt] = useState(false);
+
+  if (!activeCheckIn) {
+    return null;
+  }
+
+  const kidSummary =
+    activeCheckIn.checkedKids.length === 1
+      ? activeCheckIn.checkedKids[0]?.name
+      : `${activeCheckIn.checkedKids.length} børn`;
+
+  return (
+    <>
+      <Pressable
+        style={styles.checkInBanner}
+        onPress={() => setShowPrompt(true)}
+      >
+        <View style={styles.checkInBannerIcon}>
+          <MaterialCommunityIcons name="account-check" size={18} color="#fff" />
+        </View>
+        <View style={styles.checkInBannerCopy}>
+          <Text style={styles.checkInBannerTitle}>Checket ind</Text>
+          <Text style={styles.checkInBannerText} numberOfLines={1}>
+            {kidSummary} ved {activeCheckIn.park.name}
+          </Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-right" size={22} color="#5D8D68" />
+      </Pressable>
+
+      <Modal transparent visible={showPrompt} animationType="fade">
+        <View style={styles.centerModalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShowPrompt(false)}
+          />
+          <View style={styles.centerModal}>
+            <Text style={styles.modalTitle}>Tjek ud?</Text>
+            <Text style={styles.infoText}>
+              Vil du tjekke {kidSummary} ud fra {activeCheckIn.park.name}?
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.cancelButton}
+                onPress={() => setShowPrompt(false)}
+              >
+                <Text style={styles.cancelText}>Bliv her</Text>
+              </Pressable>
+              <Pressable
+                style={styles.dangerButton}
+                onPress={() => {
+                  activeCheckIn.kidIds.forEach((kidId) =>
+                    checkOutKid(activeCheckIn.park.id, kidId),
+                  );
+                  setShowPrompt(false);
+                }}
+              >
+                <Text style={styles.saveText}>Tjek ud</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
 function ProfileScreen({
   onNavigate,
   onAddChild,
@@ -606,7 +725,7 @@ function ProfileScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppStatusBar />
+      <CheckInBanner />
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.profileBody}
@@ -686,7 +805,7 @@ function MenuScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <AppStatusBar />
+      <CheckInBanner />
       <ScrollView
         style={styles.content}
         contentContainerStyle={styles.menuBody}
@@ -1003,6 +1122,49 @@ const styles = StyleSheet.create({
     textAlign: "center",
     fontSize: 13,
     color: "#6D767C",
+  },
+  checkInBanner: {
+    marginHorizontal: 20,
+    marginTop: 4,
+    marginBottom: 10,
+    minHeight: 54,
+    borderRadius: 18,
+    backgroundColor: "#FFFDF8",
+    borderWidth: 1,
+    borderColor: "#D8E8D4",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowOffset: { width: 0, height: 6 },
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  checkInBannerIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#78B97A",
+    marginRight: 10,
+  },
+  checkInBannerCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  checkInBannerTitle: {
+    color: "#5D8D68",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  checkInBannerText: {
+    marginTop: 2,
+    color: "#384248",
+    fontSize: 14,
+    fontWeight: "700",
   },
   searchRow: {
     flexDirection: "row",
@@ -1343,6 +1505,14 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 14,
     backgroundColor: "#78B97A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  dangerButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: "#C65E5E",
     alignItems: "center",
     justifyContent: "center",
   },

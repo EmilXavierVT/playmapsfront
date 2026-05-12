@@ -31,40 +31,6 @@ type BottomNavProps = {
   onNavigate: (screen: "home" | "profile" | "menu") => void;
 };
 
-export function AppStatusBar({ dark = false }: { dark?: boolean }) {
-  const iconColor = dark ? COLORS.surface : COLORS.textPrimary;
-
-  return (
-    <View
-      style={[
-        styles.statusBar,
-        dark ? styles.statusBarDark : styles.statusBarLight,
-      ]}
-    >
-      <Text style={styles.statusText}>9:41</Text>
-      <View style={styles.statusIcons}>
-        <MaterialCommunityIcons
-          name={"signal-cellular-3" as any}
-          size={16}
-          color={iconColor}
-        />
-        <MaterialCommunityIcons
-          style={styles.statusIconSpacing}
-          name="wifi"
-          size={16}
-          color={iconColor}
-        />
-        <MaterialCommunityIcons
-          style={styles.statusIconSpacing}
-          name="battery"
-          size={20}
-          color={iconColor}
-        />
-      </View>
-    </View>
-  );
-}
-
 export function BottomNav({ active, onNavigate }: BottomNavProps) {
   return (
     <View style={styles.bottomNav}>
@@ -122,11 +88,13 @@ export function ParkInfoCard({
   park,
   onNavigate,
   onOpenDetails,
+  onCopyLink,
   compact = false,
 }: {
   park: Park;
   onNavigate: () => void;
   onOpenDetails: () => void;
+  onCopyLink?: () => void;
   compact?: boolean;
 }) {
   const featureTags = park.facilities.slice(0, 3);
@@ -171,9 +139,20 @@ export function ParkInfoCard({
           {park.km.toFixed(1)} km væk ·{" "}
           <Text style={styles.cardMetaActive}>{park.count} børn her nu</Text>
         </Text>
-        <Text style={styles.cardSubtitle}>
-          {park.address} · {park.facilityCount} faciliteter
-        </Text>
+        <Pressable
+          disabled={!onCopyLink}
+          onPress={onCopyLink}
+          style={styles.copyCoordinateButton}
+        >
+          <MaterialCommunityIcons
+            name="link-variant"
+            size={14}
+            color={COLORS.textSecondary}
+          />
+          <Text style={styles.cardSubtitle}>
+            {park.address} · {park.facilityCount} faciliteter
+          </Text>
+        </Pressable>
 
         <View style={styles.cardTags}>
           {featureTags.map((facility) => (
@@ -199,8 +178,13 @@ export function ParkInfoCard({
             />
             <Text style={styles.secondaryActionText}>View on Map</Text>
           </Pressable>
-          <Pressable onPress={onOpenDetails} style={styles.inlineLink}>
-            <Text style={styles.inlineLinkText}>Details</Text>
+          <Pressable onPress={onOpenDetails} style={styles.detailsAction}>
+            <MaterialCommunityIcons
+              name="chevron-right-circle"
+              size={16}
+              color={COLORS.primary}
+            />
+            <Text style={styles.detailsActionText}>Details</Text>
           </Pressable>
         </View>
       </View>
@@ -315,10 +299,25 @@ export function ModalSheet({
   );
 }
 
-export function ChildCard({ kid, onPress }: { kid: Kid; onPress: () => void }) {
+export function ChildCard({
+  kid,
+  onPress,
+  disabled = false,
+  note,
+}: {
+  kid: Kid;
+  onPress: () => void;
+  disabled?: boolean;
+  note?: string;
+}) {
   return (
-    <Pressable style={styles.childCard} onPress={onPress}>
+    <Pressable
+      disabled={disabled}
+      style={[styles.childCard, disabled && styles.childCardDisabled]}
+      onPress={onPress}
+    >
       <Text style={styles.childCardText}>{kid.name}</Text>
+      {note ? <Text style={styles.childCardNote}>{note}</Text> : null}
     </Pressable>
   );
 }
@@ -512,28 +511,6 @@ export function Toast({ message }: { message: string }) {
 }
 
 const styles = StyleSheet.create({
-  statusBar: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 10,
-  },
-  statusBarLight: {},
-  statusBarDark: {},
-  statusText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: COLORS.textPrimary,
-  },
-  statusIcons: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statusIconSpacing: {
-    marginLeft: 10,
-  },
   bottomNav: {
     height: 84,
     backgroundColor: COLORS.surface,
@@ -648,10 +625,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   cardSubtitle: {
-    marginTop: 4,
+    flex: 1,
     fontSize: 14,
     lineHeight: 20,
     color: COLORS.textSecondary,
+  },
+  copyCoordinateButton: {
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   cardTags: {
     marginTop: 14,
@@ -704,14 +687,24 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: COLORS.surface,
   },
-  inlineLink: {
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+  detailsAction: {
+    minWidth: 104,
+    minHeight: 44,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#D8E8D4",
+    backgroundColor: "#FFFDF8",
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
   },
-  inlineLinkText: {
-    color: COLORS.hover,
+  detailsActionText: {
+    color: COLORS.primary,
     fontSize: 13,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   mapContainer: {
     width: "100%",
@@ -863,10 +856,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginHorizontal: 5,
   },
+  childCardDisabled: {
+    backgroundColor: "#C9D3C5",
+    opacity: 0.72,
+  },
   childCardText: {
     fontSize: 17,
     fontWeight: "700",
     color: COLORS.surface,
+  },
+  childCardNote: {
+    marginTop: 4,
+    fontSize: 11,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
   },
   screen: {
     flex: 1,

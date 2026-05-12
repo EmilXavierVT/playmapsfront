@@ -1,5 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import MapView, { Marker } from "react-native-maps";
+import { useEffect, useMemo, useRef } from "react";
+import MapView, { Marker, Region } from "react-native-maps";
 import { StyleSheet, Text, View } from "react-native";
 import { Park } from "../app/constants";
 
@@ -8,6 +9,11 @@ const COLORS = {
   accent: "#F2D27D",
   border: "#E7E1D6",
   textSecondary: "#6D767C",
+};
+
+const FALLBACK_REGION = {
+  latitude: 55.6761,
+  longitude: 12.5683,
 };
 
 export function PlaymapsMapSurface({
@@ -21,25 +27,36 @@ export function PlaymapsMapSurface({
   currentLocation?: { latitude: number; longitude: number } | null;
   onSelect: (parkId: string) => void;
 }) {
+  const mapRef = useRef<MapView>(null);
   const focusedPark = parks.find((park) => park.id === focusedId) ?? parks[0];
-  const latitudeValues = parks.map((park) => park.latitude);
-  const longitudeValues = parks.map((park) => park.longitude);
-  const latitudeDelta =
-    Math.max(...latitudeValues) - Math.min(...latitudeValues) + 0.02;
-  const longitudeDelta =
-    Math.max(...longitudeValues) - Math.min(...longitudeValues) + 0.02;
+  const mapRegion = useMemo<Region>(() => {
+    if (currentLocation) {
+      return {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
+      };
+    }
+
+    return {
+      latitude: focusedPark?.latitude ?? FALLBACK_REGION.latitude,
+      longitude: focusedPark?.longitude ?? FALLBACK_REGION.longitude,
+      latitudeDelta: 0.035,
+      longitudeDelta: 0.035,
+    };
+  }, [currentLocation, focusedPark?.latitude, focusedPark?.longitude]);
+
+  useEffect(() => {
+    mapRef.current?.animateToRegion(mapRegion, 450);
+  }, [mapRegion]);
 
   return (
     <View style={styles.nativeMapShell}>
       <MapView
-        key={`${focusedId}-${currentLocation?.latitude ?? "none"}-${currentLocation?.longitude ?? "none"}`}
+        ref={mapRef}
         style={styles.nativeMap}
-        initialRegion={{
-          latitude: currentLocation?.latitude ?? focusedPark.latitude,
-          longitude: currentLocation?.longitude ?? focusedPark.longitude,
-          latitudeDelta: Math.max(latitudeDelta, 0.03),
-          longitudeDelta: Math.max(longitudeDelta, 0.03),
-        }}
+        initialRegion={mapRegion}
         showsCompass={false}
         showsUserLocation={Boolean(currentLocation)}
         showsScale={false}

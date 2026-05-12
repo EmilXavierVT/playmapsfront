@@ -1,4 +1,5 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { Park } from "../app/constants";
 
@@ -19,6 +20,30 @@ export function PlaymapsMapSurface({
   currentLocation?: { latitude: number; longitude: number } | null;
   onSelect: (parkId: string) => void;
 }) {
+  const currentLocationPosition = useMemo(() => {
+    if (!currentLocation || parks.length === 0) {
+      return null;
+    }
+
+    const latitudes = parks.map((park) => park.latitude);
+    const longitudes = parks.map((park) => park.longitude);
+    const minLatitude = Math.min(...latitudes);
+    const maxLatitude = Math.max(...latitudes);
+    const minLongitude = Math.min(...longitudes);
+    const maxLongitude = Math.max(...longitudes);
+    const latitudeRange = maxLatitude - minLatitude || 1;
+    const longitudeRange = maxLongitude - minLongitude || 1;
+    const left =
+      ((currentLocation.longitude - minLongitude) / longitudeRange) * 100;
+    const top =
+      (1 - (currentLocation.latitude - minLatitude) / latitudeRange) * 100;
+
+    return {
+      left: `${Math.min(94, Math.max(6, left))}%`,
+      top: `${Math.min(90, Math.max(12, top))}%`,
+    };
+  }, [currentLocation, parks]);
+
   return (
     <View style={styles.mapContainer}>
       <View style={styles.mapBackground}>
@@ -26,12 +51,15 @@ export function PlaymapsMapSurface({
         <View style={[styles.mapRoad, styles.mapRoadB]} />
         <View style={[styles.mapRoad, styles.mapRoadC]} />
         <View style={styles.mapParkShape} />
-        <View
-          style={[
-            styles.currentLocation,
-            currentLocation ? styles.currentLocationActive : null,
-          ]}
-        />
+        {currentLocationPosition ? (
+          <View
+            style={[
+              styles.currentLocation,
+              styles.currentLocationActive,
+              currentLocationPosition,
+            ]}
+          />
+        ) : null}
       </View>
       <View style={styles.mapHintChip}>
         <MaterialCommunityIcons

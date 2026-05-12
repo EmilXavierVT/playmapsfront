@@ -218,6 +218,11 @@ export function PlaymapsProvider({ children }: { children: ReactNode }) {
   };
 
   const checkInKid = (parkId: string, kidId: number) => {
+    if (Object.values(checkedIn).some((kidIds) => kidIds.includes(kidId))) {
+      flashToast("Barnet er allerede checket ind");
+      return;
+    }
+
     setCheckedIn((current) => {
       const existing = current[parkId] ?? [];
       if (existing.includes(kidId)) {
