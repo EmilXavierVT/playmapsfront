@@ -35,6 +35,19 @@ function authHeaders(token?: string): Record<string, string> {
   return { Authorization: `Bearer ${token}` };
 }
 
+const DEFAULT_NEARBY_LOCATION = {
+  latitude: 55.6761,
+  longitude: 12.5683,
+};
+
+export const DEFAULT_NEARBY_RADIUS_METERS = 1500;
+
+type PlaygroundsNearMeRequest = {
+  latitude: number;
+  longitude: number;
+  radiusInMeters: number;
+};
+
 async function apiRequest<T>(path: string, options?: RequestInit, token?: string) {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -65,8 +78,26 @@ export async function login(email: string, password: string) {
   );
 }
 
-async function getPlaygrounds(token?: string) {
-  return apiRequest<ApiPlayground[]>('/playgrounds/', undefined, token);
+async function getPlaygrounds(
+  latitude: number,
+  longitude: number,
+  radiusInMeters: number,
+  token?: string,
+) {
+  const body: PlaygroundsNearMeRequest = {
+    latitude,
+    longitude,
+    radiusInMeters,
+  };
+
+  return apiRequest<ApiPlayground[]>(
+    '/playgrounds/nearme',
+    {
+      method: 'POST',
+      body: JSON.stringify(body),
+    },
+    token,
+  );
 }
 
 async function getFacility(playgroundId: number, token?: string) {
@@ -99,8 +130,13 @@ function mapFacilities(facility: ApiFacility) {
   return FACILITY_LABELS.filter(([key]) => facility[key] === true).map(([, label]) => label);
 }
 
-export async function fetchParks(token?: string) {
-  const playgrounds = await getPlaygrounds(token);
+export async function fetchParks(
+  token?: string,
+  location?: { latitude: number; longitude: number },
+  radiusInMeters = DEFAULT_NEARBY_RADIUS_METERS,
+) {
+  const { latitude, longitude } = location ?? DEFAULT_NEARBY_LOCATION;
+  const playgrounds = await getPlaygrounds(latitude, longitude, radiusInMeters, token);
   const latitudes = playgrounds.map((park) => park.latitude);
   const longitudes = playgrounds.map((park) => park.longitude);
   const minLat = Math.min(...latitudes);

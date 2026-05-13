@@ -1,3 +1,4 @@
+import * as Location from "expo-location";
 import {
   createContext,
   ReactNode,
@@ -6,17 +7,20 @@ import {
   useEffect,
   useState,
 } from "react";
-import * as Location from "expo-location";
-import { fetchParks, login as loginRequest } from "../api";
+import {
+  DEFAULT_NEARBY_RADIUS_METERS,
+  fetchParks,
+  login as loginRequest,
+} from "../api";
 import { Toast } from "../components/PlaymapsUI";
 import {
   AuthSession,
   DEFAULT_LOGIN_EMAIL,
   DEFAULT_LOGIN_PASSWORD,
   INITIAL_KIDS,
-  PARKS,
-  Park,
   Kid,
+  Park,
+  PARKS,
 } from "../constants";
 
 type CheckedIn = Record<string, number[]>;
@@ -38,7 +42,10 @@ type PlaymapsContextType = {
   requestCurrentLocation: () => Promise<void>;
   parks: Park[];
   loadingParks: boolean;
-  refreshParks: () => Promise<void>;
+  refreshParks: (
+    location?: ClientLocation,
+    radiusInMeters?: number,
+  ) => Promise<void>;
   favorites: string[];
   toggleFavorite: (parkId: string) => void;
   focusedParkId: string;
@@ -101,18 +108,28 @@ export function PlaymapsProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToast(null), 1800);
   }, []);
 
-  const refreshParks = useCallback(async () => {
-    setLoadingParks(true);
-    try {
-      const data = await fetchParks(session?.token);
-      setParks(data.length ? data : PARKS);
-    } catch {
-      setParks(PARKS);
-      flashToast("Kunne ikke hente legepladser. Viser demo-data.");
-    } finally {
-      setLoadingParks(false);
-    }
-  }, [flashToast, session?.token]);
+  const refreshParks = useCallback(
+    async (
+      location?: ClientLocation,
+      radiusInMeters = DEFAULT_NEARBY_RADIUS_METERS,
+    ) => {
+      setLoadingParks(true);
+      try {
+        const data = await fetchParks(
+          session?.token,
+          location ?? currentLocation ?? undefined,
+          radiusInMeters,
+        );
+        setParks(data.length ? data : PARKS);
+      } catch {
+        setParks(PARKS);
+        flashToast("Kunne ikke hente legepladser. Viser demo-data.");
+      } finally {
+        setLoadingParks(false);
+      }
+    },
+    [flashToast, currentLocation, session?.token],
+  );
 
   const requestCurrentLocation = useCallback(async () => {
     setLocationPending(true);
@@ -134,6 +151,10 @@ export function PlaymapsProvider({ children }: { children: ReactNode }) {
 
       setCurrentLocation(nextLocation);
 
+      if (session) {
+        await refreshParks(nextLocation);
+      }
+
       if (parks.length) {
         const nearestPark = parks.reduce((nearest, park) => {
           if (!nearest) {
@@ -153,7 +174,7 @@ export function PlaymapsProvider({ children }: { children: ReactNode }) {
     } finally {
       setLocationPending(false);
     }
-  }, [flashToast, parks]);
+  }, [flashToast, parks, refreshParks, session]);
 
   const login = useCallback(
     async (email: string, password: string) => {
